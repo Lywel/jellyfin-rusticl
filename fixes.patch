@@ -1,0 +1,68 @@
+diff --git i/src/gallium/drivers/zink/zink_context.c w/src/gallium/drivers/zink/zink_context.c
+index 9ee68fe..96eec5a 100644
+--- i/src/gallium/drivers/zink/zink_context.c
++++ w/src/gallium/drivers/zink/zink_context.c
+@@ -1165,7 +1165,7 @@ rebind_buffer_as_image(struct pipe_context *pctx, struct pipe_resource *pres, en
+       .depth0 = 1,
+       .array_size = 1,
+    };
+-   whandle.offset = tex2d->offset;
++   whandle.offset = tex2d->offset * util_format_get_blocksize(pformat);
+    whandle.stride = util_format_get_stride(pformat, tex2d->row_stride);
+    whandle.modifier = 0;
+ 
+diff --git i/src/gallium/drivers/zink/zink_screen.c w/src/gallium/drivers/zink/zink_screen.c
+index a58378b..41ad95c 100644
+--- i/src/gallium/drivers/zink/zink_screen.c
++++ w/src/gallium/drivers/zink/zink_screen.c
+@@ -1223,6 +1223,10 @@ zink_init_screen_caps(struct zink_screen *screen)
+    case VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA:
+       caps->linear_image_pitch_alignment = 1;
+       break;
++   /* Mali v7+ linear rows are 64-byte aligned, see pan_linear_or_tiled_row_align_req() */
++   case VK_DRIVER_ID_MESA_PANVK:
++      caps->linear_image_pitch_alignment = 64;
++      break;
+    /* AMD requires 256 */
+    case VK_DRIVER_ID_AMD_PROPRIETARY:
+    case VK_DRIVER_ID_MESA_RADV:
+diff --git i/src/gallium/frontends/rusticl/api/memory.rs w/src/gallium/frontends/rusticl/api/memory.rs
+index cd3ba9d..f26c905 100644
+--- i/src/gallium/frontends/rusticl/api/memory.rs
++++ w/src/gallium/frontends/rusticl/api/memory.rs
+@@ -34,6 +34,8 @@ use rusticl_proc_macros::cl_info_entrypoint;
+ use std::cmp;
+ use std::cmp::Ordering;
+ use std::num::NonZeroU64;
++use std::os::fd::BorrowedFd;
++use std::os::fd::IntoRawFd;
+ use std::os::raw::c_void;
+ use std::ptr;
+ use std::sync::Arc;
+@@ -3668,16 +3670,24 @@ pub unsafe fn import_memory_arm(
+             // The spec leaves the type ambigous, however it should point to a
+             // dma_buf hadle, which is a c_int on UNIX platforms.
+             let fd_raw = unsafe { *(memory as *mut _) };
+-            let fd = FenceFd { fd: fd_raw };
+ 
+             // Get a rough upper-bound for the size of the DMA buffer.
+             // SAFETY: Always safe as long as the underlying C API is safe.
+-            let fd_size = unsafe { lseek(fd.fd, 0, SEEK_END.try_into().unwrap()) };
++            let fd_size = unsafe { lseek(fd_raw, 0, SEEK_END.try_into().unwrap()) };
+             // When lseek fails and returns a -1, the fd is assumed invalid.
+             if fd_size == -1 {
+                 return Err(CL_INVALID_OPERATION);
+             }
+ 
++            // The application keeps ownership of the dma_buf fd, so import a duplicate of it.
++            // SAFETY: lseek succeeded, so the fd is open for the duration of this call.
++            let fd = unsafe { BorrowedFd::borrow_raw(fd_raw) }
++                .try_clone_to_owned()
++                .map_err(|_| CL_OUT_OF_HOST_MEMORY)?;
++            let fd = FenceFd {
++                fd: fd.into_raw_fd(),
++            };
++
+             // CL_INVALID_BUFFER_SIZE when size is greater than the size of the
+             // allocation being imported.
+             if i64::try_from_with_err(size, CL_INVALID_BUFFER_SIZE)? > fd_size {
