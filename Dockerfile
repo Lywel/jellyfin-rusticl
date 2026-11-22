@@ -32,7 +32,8 @@ RUN meson setup build -Dprefix=$P -Dbuildtype=release \
 
 # Runtime libraries the Jellyfin image lacks, taken from the Debian packages that provide them.
 RUN LIB=$P/lib/aarch64-linux-gnu \
- && ldd $LIB/libRusticlOpenCL.so.1 $LIB/libvulkan_panfrost.so | awk '/=>/ {print $3}' | grep -v "^$P" | sort -u > /tmp/needed-libs.txt \
+ && ldd $LIB/libRusticlOpenCL.so.1 $LIB/libvulkan_panfrost.so \
+    | awk '/=>/ {print $3}' | grep -v "^$P" | xargs realpath | sort -u > /tmp/needed-libs.txt \
  && for l in $(cat /tmp/needed-libs.txt); do dpkg -S "$l" 2>/dev/null | head -1 | cut -d: -f1; done | sort -u > /tmp/needed-pkgs.txt \
  && (grep -v -x -F -f /tmp/base-packages.txt /tmp/needed-pkgs.txt > /tmp/extra-pkgs.txt || true) \
  && cat /tmp/extra-pkgs.txt \
