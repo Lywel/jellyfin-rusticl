@@ -1,4 +1,6 @@
 ARG JELLYFIN_TAG=12.4
+# Image tag suffix: bump when fixes.patch or the build changes.
+ARG REVISION=2
 
 FROM jellyfin/jellyfin:${JELLYFIN_TAG}@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771 AS base
 

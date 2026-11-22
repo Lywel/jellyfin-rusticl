@@ -1,5 +1,5 @@
 diff --git i/src/gallium/drivers/zink/zink_context.c w/src/gallium/drivers/zink/zink_context.c
-index 9ee68fe..96eec5a 100644
+index 9ee68fe..2de219f 100644
 --- i/src/gallium/drivers/zink/zink_context.c
 +++ w/src/gallium/drivers/zink/zink_context.c
 @@ -1165,7 +1165,7 @@ rebind_buffer_as_image(struct pipe_context *pctx, struct pipe_resource *pres, en
@@ -11,6 +11,23 @@ index 9ee68fe..96eec5a 100644
     whandle.stride = util_format_get_stride(pformat, tex2d->row_stride);
     whandle.modifier = 0;
  
+@@ -2149,7 +2149,7 @@ unbind_shader_image(struct zink_context *ctx, mesa_shader_stage stage, unsigned
+       pipe_resource_reference(&image_view->base.resource, NULL);
+    image_view->base.resource = NULL;
+    image_view->surface = NULL;
+-   image_view->import2d = NULL;
++   zink_resource_reference(&image_view->import2d, NULL);
+ }
+ 
+ static struct zink_buffer_view *
+@@ -2337,6 +2337,7 @@ zink_set_shader_images(struct pipe_context *pctx,
+                struct zink_resource *import2d = NULL;
+                struct zink_surface *surface = create_image_surface(ctx, b, is_compute, &import2d);
+                if (tex2d_from_buf) {
++                  zink_resource_reference(&a->import2d, NULL);
+                   a->import2d = import2d;
+                   bind_shaderimage_resource_stage(ctx, b, a->import2d, is_compute);
+                }
 diff --git i/src/gallium/drivers/zink/zink_screen.c w/src/gallium/drivers/zink/zink_screen.c
 index a58378b..41ad95c 100644
 --- i/src/gallium/drivers/zink/zink_screen.c

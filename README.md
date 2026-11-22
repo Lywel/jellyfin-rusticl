@@ -17,22 +17,19 @@ Rusticl can run on two Mesa drivers for this GPU.
 
 ## What fixes.patch changes
 
-Three changes to how frames are imported:
+Four changes to how frames are imported:
 
 - Rusticl closed the dma-buf fd passed to `clImportMemoryARM`, although ffmpeg still owns it. It now imports a duplicate.
 - Zink used the colour plane's offset, which rusticl gives in pixels, as a byte offset, so the colour data was read from inside the brightness plane. It now converts pixels to bytes.
 - Zink reported its default 256-pixel row alignment for panvk. It now reports Mali's 64 bytes.
+- Zink never released the image it creates when a kernel writes into an imported buffer (`unbind_shader_image`, `zink_set_shader_images`). The tone mapping output is such a buffer, so every frame left one image behind. Each kept its GPU address range, and panvk's address allocator (`util_vma_heap`) got slower with every frame: a 4K HDR to 4K conversion fell from 1.74x to 1.43x real time in 3 minutes, and below real time after about 8. With the release, the same conversion held 1.73x to 1.82x for 10 minutes. Mesa main still had the bug on 2026-11-22.
 
 With the patch, imported frames are byte-identical to the RGA scaler's output at 1920x1080 (other sizes untested). A 60 s clip of a 4K HDR10 film converts at 3.05x real time to 1080p and at 1.32x to 4K.
 
 The image also copies LLVM 19's clang headers: rusticl compiles the tone mapping kernel when it first runs and fails without `opencl-c-base.h`.
 
-## Known problem
-
-A conversion gets slower the longer it runs. On a 4K HDR film it went from 1.40x real time after 2 minutes to 0.69x after 21 minutes, and dropped below real time after about 8 minutes, when playback starts to stall. Over that time GPU memory stayed flat, while the process's memory and its number of `renderD128` mappings kept growing, and zink's flush thread (`zfq0`) used a full CPU core. The cause isn't known yet. A seek starts a new conversion, which runs fast again.
-
 ## Image
 
-`ghcr.io/lywel/jellyfin-rusticl:<jellyfin tag>-mesa-<first 7 chars of the Mesa commit>`, e.g. `12.4-mesa-ef59438`.
+`ghcr.io/lywel/jellyfin-rusticl:<jellyfin tag>-mesa-<first 7 chars of the Mesa commit>-<revision>`, e.g. `12.4-mesa-ef59438-2`.
 
-`JELLYFIN_TAG` and `MESA_COMMIT` are set at the top of the `Dockerfile`. The Jellyfin base is also pinned by digest there: update it together with the tag.
+`JELLYFIN_TAG`, `MESA_COMMIT` and `REVISION` are set at the top of the `Dockerfile`. Bump `REVISION` when `fixes.patch` or the build changes. The Jellyfin base is also pinned by digest there: update it together with the tag.
